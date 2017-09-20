@@ -1,0 +1,226 @@
+---
+title: "Project 1, POTUS inaugurations Analysis"
+author: "Long Xue(lx2206)"
+date: "September 18, 2017"
+output: html_document
+runtime: shiny
+---
+
+# Step 0: Environment intialization, check all required packages, install if need, and load the library 
+
+```{r, message=FALSE, warning=FALSE}
+ packages.used = c('tm', 'wordcloud', 'RColorBrewer','dplyr', 'tidytext','skmeans','shiny','readxl')
+ packages.needed = setdiff(packages.used, installed.packages()[,1])
+
+ if(length(packages.needed)>0){
+   install.packages(packages.needed, dependencies=TRUE, repos='http://cran.us.r-project.org')
+}
+
+
+ library(tm)
+ library(wordcloud)
+ library(RColorBrewer)
+ library(dplyr)
+ library(tidytext)
+ library(skmeans)
+ library(shiny)
+ library(readxl)
+```
+
+This notebook was prepared with following environmnetal settings.
+
+```{r}
+ print(R.version)
+```
+
+# Step 1: Data Initialization
+
+All inaugural speechs are already prepared and saved. Load all txt files in and set the corpus with some basic pretreatments like removing all whitespace, stopwords, punctuation, and change all terms to lowercase.
+
+
+```{r}
+ folder.path = '../data/InauguralSpeeches/'
+ 
+ filenames = list.files(path=folder.path, pattern='*.txt')
+ speeches = substr(filenames, 1, nchar(filenames)-4)
+
+ ff.all <- Corpus(DirSource(folder.path))
+ ff.all <- tm_map(ff.all, stripWhitespace)
+ ff.all <- tm_map(ff.all, content_transformer(tolower))
+ ff.all <- tm_map(ff.all, removeWords, stopwords("english"))
+ ff.all <- tm_map(ff.all, removeWords, character(0))
+ ff.all <- tm_map(ff.all, removePunctuation)
+
+ tdm.all <- TermDocumentMatrix(ff.all)
+ tdm.tidy <- tidy(tdm.all)
+ 
+ dtm.all <- DocumentTermMatrix(ff.all)
+ dtm.tidy <- tidy(dtm.all)
+ 
+ overall <- summarise(group_by(tdm.tidy, term), sum(count))
+ 
+ # Get the chronological presidents list for the further analysis based on time sequence.
+ potus.table <- read_xlsx('../data/InaugurationInfo.xlsx')
+ potus.name <- potus.table$File
+ potus.term <- potus.table$Term
+ 
+ # Produce chronologically listed file names
+ potus <- paste(potus.name, potus.term, sep='-')
+```
+
+
+# Step 2: Analysis - Text Clustering
+
+Text clustering is the cluster analysis to documents, to see which inaugural speeches are similar and can be clustered in a same group. 
+
+First, we adjusted the Documents-terms matrix with Tf-Idf weight
+
+Then, we applied K-means with cosine similarity (Cosine distance or Cosine similarity are widely used in the assessing of similarity between vectors in text mining rather than euclidean distance), which are also known as spherical k means.
+
+After the displaying of frequent terms among inaugurations being clustered together, we can find some patterns, or similarities.  
+
+
+```{r}
+ # Readjust to td-idf weight
+ dtm.all.TfIdf <- weightTfIdf(dtm.all, normalize=TRUE)
+
+ skmeans.out <- skmeans(dtm.all.TfIdf, k=10, control= list(maxiter=30))
+ 
+
+ dtm.all.clustered <- dtm.all[skmeans.out$cluster==2,]
+ dtm.tidy.clusterd <- tidy(dtm.all.clustered)
+ overall.clusterd <- summarise(group_by(dtm.tidy.clusterd, term), count=sum(count))
+
+```
+
+```{r, warning=FALSE}
+
+ shinyApp(
+    ui = fluidPage(
+      fluidRow(style = "padding-bottom: 20px;",
+        column(4, selectInput('cluster', 'Cluster', 1:10, selected=1)),
+        column(4, sliderInput('nwords', 'Number of words', 3,
+                               min = 20, max = 200, value=100, step = 20))
+      ),
+      fluidRow(
+        column(8,plotOutput('wordclouds', height='400px')),
+        column(4,tableOutput('presidents'))
+      )
+    ),
+
+    server = function(input, output, session){
+      # selected all presidents in the specific cluster 
+      selectedData <- reactive({
+        dtm.all.TfIdf[skmeans.out$cluster==input$cluster,] %>% tidy %>% group_by(term) %>% summarise(count=sum(count))
+      })
+
+      output$wordclouds <- renderPlot(height=400, {
+        wordcloud(selectedData()$term, 
+                  selectedData()$count,
+              scale=c(4,0.5),
+              max.words=input$nwords,
+              min.freq=1,
+              random.order=FALSE,
+              rot.per=0,
+              use.r.layout=FALSE,
+              random.color=FALSE,
+              colors=brewer.pal(9,"Blues"), 
+              main=input$cluster)
+      })
+      
+      output$presidents <- renderTable({
+        skmeans.out$cluster[skmeans.out$cluster==input$cluster] %>% as.data.frame %>% rownames %>% as.data.frame -> inauguration
+        inaug <- data.frame(
+           President = apply(inauguration, 1, function(x){substr(x, 6, nchar(x)-6)}),
+           Term = apply(inauguration, 1, function(x){substr(x, nchar(x)-4, nchar(x)-4)}))
+      })
+ 
+    },
+
+    options = list(height=600)
+)
+```
+ 
+
+For most presidents who were re-elected to their second terms, their two inaugural speeches were clustered in the same group. It is reasonable because of their speech habits and vocabulary preferences are consistent. And the president who had just won his second election was likely to look back his last term and review what he mentioned in the speech 4 year ago. Besides, 4 years' time are relatively short, which means the political, economic and global environment won't change significantly. Thus, it is what we should exactly expect.
+
+
+
+# Step 3: Analysis - Change in frequent words 
+
+I designed a interesting analysis comparing the difference in high-frequent terms between one president and his former 5 presidents's inaugural speech (including himself if he served 2 terms), to assess the change happended in this 20 years.
+
+The blue wordcloud consists the terms most frequntly mentioned during 20 years' time while the red wordcloud displayed the words that shared a suspiciously decresing in appearence.
+
+```{r}
+shinyApp(
+    ui = fluidPage(
+      fluidRow(style = "padding-bottom: 20px;",
+        column(4, selectInput('name', 'President and Term', potus[6:length(potus)], selected=potus[6]))
+      ),
+      fluidRow(
+        column(6,plotOutput('wordclouds1', height='400px')),
+        column(6,plotOutput('wordclouds2', height='400px'))
+      )
+    ),
+
+    server = function(input, output, session){
+
+      # Calculate the mean of previous 5 vectors
+      idx <- reactive({which(potus==input$name)})
+      formerPresidents <- reactive({potus[(idx()-5):(idx()-1)]})
+      formerSpeeches <- reactive({paste('inaug', formerPresidents(), '.txt', sep='')})
+      nowSpeech <- reactive({paste('inaug', input$name, '.txt', sep='')})
+      
+      selectedData <- reactive({
+        dtm.all.TfIdf[formerSpeeches(),] %>% tidy %>% group_by(term) %>% summarise(count=sum(count))
+      })
+      
+      # Calculate the change and put it into a new data framer
+      selectedData1 <- reactive({
+        dtm.all.TfIdf[formerSpeeches(),] %>% as.matrix %>% apply(2, mean) %>% t}) 
+      selectedData2 <- reactive({
+        dtm.all.TfIdf[nowSpeech(),] %>% as.matrix})
+      difference <- reactive({selectedData1()-selectedData2() %>% as.matrix})
+      trans <- reactive({data.frame(term=(difference()%>% colnames),  count=difference()[1,])})
+      
+      output$wordclouds1 <- renderPlot(height=400, {
+        wordcloud(selectedData()$term, 
+                  selectedData()$count,
+              scale=c(4,0.5),
+              max.words=50,
+              min.freq=1,
+              random.order=FALSE,
+              rot.per=0,
+              use.r.layout=FALSE,
+              random.color=FALSE,
+              colors=brewer.pal(9,"Blues"), 
+              main=input$cluster)
+      })
+      
+      output$wordclouds2 <- renderPlot(height=300, {
+        wordcloud(trans()$term, 
+                  trans()$count,
+              scale=c(4,0.5),
+              max.words=25,
+              min.freq=1,
+              random.order=FALSE,
+              rot.per=0,
+              use.r.layout=FALSE,
+              random.color=FALSE,
+              colors=brewer.pal(9,"Reds"), 
+              main=input$cluster)
+      })
+      
+ 
+    },
+
+    options = list(height=600)
+)
+```
+
+ 
+Let's take Bush the elder as an example. By the time he came to power, the cold war has come to an end, and the Soviet Union was at the edge of collapsing. We can clearly see that the usage of terms indicating tensions, like *weapond*, *nuclear*, dropped distinctly. 
+
+In Roosevelt second term, the country has recoverd from the Great Depression and economy start warming up again. Words like *recovery*,*industrail* no longer took up a major part of the inaugural speech.
+

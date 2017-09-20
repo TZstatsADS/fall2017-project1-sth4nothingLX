@@ -1,0 +1,179 @@
+---
+title: "Project1, Text rank"
+author: "Long Xue(lx2206)"
+date: "September 20, 2017"
+output: html_document
+---
+
+One of the main goal of text mining is to understand the topic of one president inauguration, or in other words, to **subtract the key words**.
+
+The most classic method, TF-IDF is very simple, but effective. And we can add weight to enhance the first paragraph and the last paragraph of the text, for the article's keywords will often appear in the beginning and end. But TF-IDF only mines the information from the word frequency, and can not reflect deep information covered under words.
+
+Then LDA, the most popular topic model is used to find implicit semantic dimensions from the text, adding more general information between words and documents, for example, the connection between *banana* and *fruit*.
+
+However, LDA is based on a large number of texts for training and the EM algorithm it uses and the bayesian structure indicates that the time complexity is extremely high. It took hours for my laptop to perform LDA on all inaugural speeches and produce the topic-word matrix.
+
+Thus, I came to text rank method, standing from the perspective of the graph structure to find the keywords. The basic idea comes from the pagerank algorithm. We can regard a phrase, like *wake up*, as a edge from vertex *wake* to *up*. Use this idea to construct a graph from the text and run page rank algorithm to determine the most important vertices, or words. Its most obvious advantage is that text rank don't need a full set of texts for training. It is very fast to run and can run on a single text. **I chose Donald.J Trump's inaugural speech for key words subtraction in this project**. And it can retrive phrases, like *United States* rather than *States*, easier for understanding in a human way.
+
+Origrinal R codes were posted on a blog with some adjustments been made.Here is the reference:
+
++ [Keywords Extraction using TextRank](https://rpubs.com/ivan_berlocher/79860).
+
++ [Original R Code](http://snipplr.com/view/53331/textrank--keywords-extraction/).
+
+# Environment intialization, check all required packages, install if need, and load the library as well as functions
+
+```{r, warning=FALSE, message=FALSE}
+library(NLP)
+library(tm)
+library(openNLP)
+
+# the following packages are not supported by CRAN repo anymore. Download and install with Bioconductor
+source("http://bioconductor.org/biocLite.R")
+biocLite("Rgraphviz", suppressUpdates=TRUE, ask=FALSE)
+biocLite("graph", suppressUpdates=TRUE, ask=FALSE)
+library(Rgraphviz)
+library(graph)
+
+# load functions for wordtagging and graph constructing
+source("../lib/tagPOS.R")
+source("../lib/GraphConstruction.R")
+```
+
+This notebook was prepared with following environmnetal settings.
+
+```{r}
+ print(R.version)
+```
+
+# Data Initialization
+
+Load Donald.J Trump's inauguration. Pretreat and save the speech with punctuation to determine whether two words were cut and belong to different sentences.
+
+```{r}
+ DJTSpeech <- paste(readLines("../data/InauguralSpeeches/inaugDonaldJTrump-1.txt"), collapse="\n") 
+ corp <- Corpus(VectorSource(DJTSpeech))
+ corp <- tm_map(corp, stripWhitespace)
+ corp <- tm_map(corp, content_transformer(tolower))
+ corp <- tm_map(corp, removeWords, stopwords("english"))
+ corp <- tm_map(corp, removeWords, character(0))
+
+ words_with_punctuation <- SplitText(as.character(corp[[1]]))
+ corp <- tm_map(corp, removePunctuation)
+```
+
+# Graph Construction
+
+First step, PoS tagging, subtract the framework, leave nouns and adjectives, which can compose key words phrases.
+
+Then, construct the graph model for further page ranking algorithm.
+
+```{r}
+ words <- SplitText(as.character(corp[[1]]))
+ tagged_text <- tagPOS(corp[[1]])
+ tagged_words <- SplitText(as.character(tagged_text))
+ # keep only NN(noun) & JJ(adjectives) tagged words 
+ tagged_words <- c(SelectTaggedWords(tagged_words,"/NN"), SelectTaggedWords(tagged_words,"/JJ"))  
+ tagged_words <- RemoveTags(tagged_words)                                                        
+ selected_words <- unique(tagged_words)                                                          
+ 
+ text_graph <- ConstructTextGraph(2)  # co-occurrence of window size 2
+```
+
+
+Plot the graphical structure of words. 
+
+```{r}
+ plot(text_graph, attrs = list(node = list(fillcolor = "lightgreen", fontsize = 30),edge = list(arrowsize=0.1)))
+```
+
+
+# Apply Text Rank and Choose key words in Trump's Speech
+
+```{r}
+
+# PAGE RANK AlGORITHM
+d <- 0.6                           
+threshold <- 1e-6                    
+text_nodes <- nodes(text_graph)
+nodes_num <- length(text_nodes)
+nodes_rank <- matrix(1,nodes_num,2)
+
+k <- 0                          
+convergence_reached <- FALSE
+repeat {
+  for (i in 1:nodes_num) {
+    incoming_link <- adj(text_graph,text_nodes[i])[[1]]
+    incoming_num <- length(incoming_link)
+    
+    tmp <- 0
+    for (j in 1:incoming_num) {
+      link_num <- which(text_nodes==incoming_link[j])
+      outgoing_num <- length(adj(text_graph,text_nodes[link_num])[[1]])
+      tmp <- tmp + nodes_rank[link_num,1] / outgoing_num
+    }
+    nodes_rank[i,1] <- (1-d)+d*tmp
+  }
+  k <- k+1
+  for (i in 1:nodes_num) {
+    if (abs(nodes_rank[i,1]-nodes_rank[i,2])<threshold) convergence_reached <- TRUE
+  }
+  if (convergence_reached) break
+  nodes_rank[,2] <- nodes_rank[,1]
+}
+
+# POST-PROCESSING to achieve the final keywords
+keywords_num <- 10
+ranked_words <- data.frame(text_nodes,nodes_rank[,1])
+names(ranked_words) <- c("word","rank")
+strong_words <- ranked_words[order(ranked_words$rank,decreasing=TRUE),]
+strong_words <- as.character(strong_words$word[1:keywords_num])
+keywords <- ""
+keywords_scores <- 0
+for (i in 1:keywords_num) {
+  keyword_positions <- which(words==strong_words[i])
+  for (j in 1:length(keyword_positions)) {
+    keyword <- ""
+    keyword_score <- 0
+    k <- keyword_positions[j]                                       
+    repeat {
+      if (IsSelectedWord(words[k])) { 
+        keyword <- trim(paste(c(keyword,words[k]),collapse=" "))
+        keyword_score <- keyword_score + ranked_words[which(ranked_words$word==words[k]),2]
+      }
+      else break                                                    
+      
+      if (IsPunctuated(words_with_punctuation[k])) break
+      if (k==length(words)) break                               
+      k <- k+1
+    }
+    k <- keyword_positions[j]-1                                 
+    repeat {
+      if (k<1) break
+      
+      if (IsSelectedWord(words[k])) { 
+        keyword <- paste(c(words[k],trim(keyword)),collapse=" ")
+        keyword_score <- keyword_score + ranked_words[which(ranked_words$word==words[k]),2]
+      }
+      else break
+      
+      if (k>1) {            
+        if (IsPunctuated(words_with_punctuation[k-1])) break
+      } 
+      k <- k-1
+    }
+    if (keyword!=strong_words[i]) { 
+      keywords <- c(keywords,keyword)
+      keywords_scores <- c(keywords_scores,keyword_score)
+    }   
+  }
+}
+
+keywords_df <- data.frame(keywords,keywords_scores)
+keywords_list <- keywords_df[order(keywords_df$keywords_scores,decreasing=TRUE),] 
+keywords_list <- unique(as.character(keywords_list$keywords[1:nrow(keywords_list)]))  
+
+keywords_list[1:10]
+```
+
+Trump's speech key words we subtracted accord with his "make United States great again". The text rank did a good job in revealing Trump inauguration's topic.
