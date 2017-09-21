@@ -225,3 +225,38 @@ Let's take Bush the elder as an example. By the time he came to power, the cold 
 
 In Roosevelt second term, the country has recoverd from the Great Depression and economy start warming up again. Words like *recovery*,*industrail* no longer took up a major part of the inaugural speech.
 
+
+# Step 4: Sentiment Changing Trend
+
+```{r}
+
+for (i in 1:58){
+   DATA <- ff[[i]]$content
+   sentences <- sent_detect(DATA, endmarks = c("?", ".", "!", "|",";"))
+   emotions <- get_nrc_sentiment(sentences)
+   #word.count <- word_count(sentences)
+   #emotions <- diag(1/(word.count+0.01)) %*% as.matrix(emotions)
+   emotions <- apply(emotions,2,sum)[1:8]
+   emotions <- emotions/sum(emotions)
+   if (i==1) TMP <- data.frame(emotions)
+     else TMP <- data.frame(TMP,emotions)
+}
+
+colnames(TMP) <- potus
+#TMP <- data.frame(potus, TMP)
+barplot(TMP %>% as.matrix, col = blues9)
+```
+
+For recent presidents's speeches, the feeling for **trust** is increaing, from which we can conclude they are trying to inspire the people, especially Trump, who want to 'make United States great again'.
+
+Feelings for **anticipation** and **trust** are always the key words for inaugurations, taking up near half of the emotions, when the president just come to power want to stress their ability to lead the country.
+
+```{r,echo=F}
+# TMP <- data.frame(TMP, potus)
+# ggplot(data=as.data.frame(TMP), aes(fill=supp)) +
+#   geom_bar(stat="identity")+
+#   geom_text(aes(y=label_ypos, label=len), vjust=1.6, 
+#             color="white", size=3.5)+
+#   scale_fill_brewer(palette="Paired")+
+#   theme_minimal()
+```
