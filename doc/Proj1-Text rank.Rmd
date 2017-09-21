@@ -72,8 +72,9 @@ Then, construct the graph model for further page ranking algorithm.
  words <- SplitText(as.character(corp[[1]]))
  tagged_text <- tagPOS(corp[[1]])
  tagged_words <- SplitText(as.character(tagged_text))
- # keep only NN(noun) & JJ(adjectives) tagged words 
- tagged_words <- c(SelectTaggedWords(tagged_words,"/NN"), SelectTaggedWords(tagged_words,"/JJ"))  
+ # keep only NN(noun) & VB(verb) tagged words 
+ #tagged_words <- c(SelectTaggedWords(tagged_words,"/NN"), SelectTaggedWords(tagged_words,"/JJ"))  
+ tagged_words <- c(SelectTaggedWords(tagged_words,"/NN"), SelectTaggedWords(tagged_words,"/VB"))
  tagged_words <- RemoveTags(tagged_words)                                                        
  selected_words <- unique(tagged_words)                                                          
  
