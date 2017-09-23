@@ -9,14 +9,28 @@ runtime: shiny
 # Step 0: Environment intialization, check all required packages, install if need, and load the library 
 
 ```{r, message=FALSE, warning=FALSE}
- packages.used = c('tm', 'wordcloud', 'RColorBrewer','dplyr', 'tidytext','skmeans','shiny','readxl')
+ packages.used = c('tm', 'wordcloud', 'RColorBrewer','dplyr', 'tidytext','skmeans','shiny','readxl','sentimentr')
  packages.needed = setdiff(packages.used, installed.packages()[,1])
 
  if(length(packages.needed)>0){
    install.packages(packages.needed, dependencies=TRUE, repos='http://cran.us.r-project.org')
 }
 
-
+ #"rvest", "tibble", "qdap", 
+#                "sentimentr", "gplots", "dplyr",
+#                "tm", "syuzhet", "factoextra", 
+#                "beeswarm", "scales", "RColorBrewer",
+#                "RANN",
+ library(RANN)
+ library(tibble)
+ library(tibble)
+ library(gplots)
+ library(syuzhet)
+ library(factoextra)
+ library(beeswarm)
+ library(scales)
+ library(RColorBrewer)
+ library(dplyr)
  library(tm)
  library(wordcloud)
  library(RColorBrewer)
@@ -24,7 +38,9 @@ runtime: shiny
  library(tidytext)
  library(skmeans)
  library(shiny)
+ library(sentimentr)
  library(readxl)
+ library(qdap)
 ```
 
 This notebook was prepared with following environmnetal settings.
@@ -231,7 +247,7 @@ In Roosevelt second term, the country has recoverd from the Great Depression and
 ```{r}
 
 for (i in 1:58){
-   DATA <- ff[[i]]$content
+   DATA <- ff.all[[i]]$content
    sentences <- sent_detect(DATA, endmarks = c("?", ".", "!", "|",";"))
    emotions <- get_nrc_sentiment(sentences)
    #word.count <- word_count(sentences)
