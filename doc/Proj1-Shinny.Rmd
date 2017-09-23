@@ -9,7 +9,8 @@ runtime: shiny
 # Step 0: Environment intialization, check all required packages, install if need, and load the library 
 
 ```{r, message=FALSE, warning=FALSE}
- packages.used = c('tm', 'wordcloud', 'RColorBrewer','dplyr', 'tidytext','skmeans','shiny','readxl','sentimentr')
+ packages.used = c('tm', 'wordcloud', 'RColorBrewer','dplyr', 'tidytext','skmeans','shiny','readxl','sentimentr','RANN','tibble','gplots',
+'syuzhet','factoextra','scales','RColorBrewer','dplyr','qdap')
  packages.needed = setdiff(packages.used, installed.packages()[,1])
 
  if(length(packages.needed)>0){
@@ -23,11 +24,9 @@ runtime: shiny
 #                "RANN",
  library(RANN)
  library(tibble)
- library(tibble)
  library(gplots)
  library(syuzhet)
  library(factoextra)
- library(beeswarm)
  library(scales)
  library(RColorBrewer)
  library(dplyr)
