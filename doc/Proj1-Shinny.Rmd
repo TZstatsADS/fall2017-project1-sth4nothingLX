@@ -17,11 +17,6 @@ runtime: shiny
    install.packages(packages.needed, dependencies=TRUE, repos='http://cran.us.r-project.org')
 }
 
- #"rvest", "tibble", "qdap", 
-#                "sentimentr", "gplots", "dplyr",
-#                "tm", "syuzhet", "factoextra", 
-#                "beeswarm", "scales", "RColorBrewer",
-#                "RANN",
  library(RANN)
  library(tibble)
  library(gplots)
@@ -100,7 +95,7 @@ After the displaying of frequent terms among inaugurations being clustered toget
  # Readjust to td-idf weight
  dtm.all.TfIdf <- weightTfIdf(dtm.all, normalize=TRUE)
 
- skmeans.out <- skmeans(dtm.all.TfIdf, k=10, control= list(maxiter=30))
+ skmeans.out <- skmeans(dtm.all.TfIdf, k=10, control= list(maxiter=10))
  
 
  dtm.all.clustered <- dtm.all[skmeans.out$cluster==2,]
@@ -241,37 +236,51 @@ Let's take Bush the elder as an example. By the time he came to power, the cold 
 In Roosevelt second term, the country has recoverd from the Great Depression and economy start warming up again. Words like *recovery*,*industrail* no longer took up a major part of the inaugural speech.
 
 
-# Step 4: Sentiment Changing Trend
+# Step 4: Sentiment Constituent
 
 ```{r}
+positive.s <- vector()
 
 for (i in 1:58){
    DATA <- ff.all[[i]]$content
    sentences <- sent_detect(DATA, endmarks = c("?", ".", "!", "|",";"))
-   emotions <- get_nrc_sentiment(sentences)
-   #word.count <- word_count(sentences)
-   #emotions <- diag(1/(word.count+0.01)) %*% as.matrix(emotions)
-   emotions <- apply(emotions,2,sum)[1:8]
+   EMO <- get_nrc_sentiment(sentences)
+   emotions <- apply(EMO[,1:8],2,sum)
    emotions <- emotions/sum(emotions)
+ 
+   positive.s <- c(positive.s, EMO[10])
    if (i==1) TMP <- data.frame(emotions)
      else TMP <- data.frame(TMP,emotions)
 }
 
+positive.s <- unlist(positive.s)
+
 colnames(TMP) <- potus
-#TMP <- data.frame(potus, TMP)
 barplot(TMP %>% as.matrix, col = blues9)
 ```
 
-For recent presidents's speeches, the feeling for **trust** is increaing, from which we can conclude they are trying to inspire the people, especially Trump, who want to 'make United States great again'.
+The blues from light to dark repectively indicate "anger", "anticipation", "disgust", "fear", "joy", "sadness", "surprise", "trust".
 
-Feelings for **anticipation** and **trust** are always the key words for inaugurations, taking up near half of the emotions, when the president just come to power want to stress their ability to lead the country.
+For recent presidents's speeches, it is apparent that the feeling for **trust** is increaing, from which we can conclude they are trying to inspire people by their inauguration, leave a positive impression. Especially for Trump, who put forward 'make United States great again'. Keyword analysis is in the second part of this presentation.
+
+Feelings for **anticipation** and **trust** are always the key words for inaugurations, taking up near half of the emotions, while strong negative words like **disgust** seldom shows up. The auguration is the time when a president just come to power, it is reasonable that they want to stress their ability to lead the country.
+
+# Step 5: Sentiment changing trend compared with unemployment rate
 
 ```{r,echo=F}
-# TMP <- data.frame(TMP, potus)
-# ggplot(data=as.data.frame(TMP), aes(fill=supp)) +
-#   geom_bar(stat="identity")+
-#   geom_text(aes(y=label_ypos, label=len), vjust=1.6, 
-#             color="white", size=3.5)+
-#   scale_fill_brewer(palette="Paired")+
-#   theme_minimal()
+unemploy <- read_xlsx('../data/unemployment rate.xlsx')
+unemploy_rate <- unemploy$Rate[seq(1,70,4)]
+
+positive <- positive.s[41:58]
+positive <- positive/max(positive)
+unemploy_rate <- unemploy_rate/max(unemploy_rate)
+
+plot(1:18, positive, type='l',xlab='Presidnets', ylab='Ratios') 
+points(1:18, unemploy_rate, type='l',col='red')
 ```
+
+We plot two graphs together to compare the positive ratio of inaugurational speeches and unemployment rate(which is the red line).
+
+There is no strict numerical relations, but a obvious pattern of co-occurance of the peak. Every time employment rate raised, it would lead to a relative increasing in the postisive ratio in the presidents' inauguration. Inauguration is a method that presidents used to cheer the population. From Phelps Curve, there is a functional relation between employment rate and inflation rate. So a relation between inflation rate and positive ratio of the speeds. 
+
+
